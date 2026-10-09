@@ -14,3 +14,7 @@ assert(ScoreFont, "failed to load fonts/MyFont")
 
 MonogramFont = gfx.font.new("fonts/monogram")
 assert(MonogramFont, "failed to load fonts/monogram")
+
+-- Мелкий пиксельный шрифт для даты/времени на чеке главного меню
+Font3x3Mono = gfx.font.new("fonts/3x3-Mono")
+assert(Font3x3Mono, "failed to load fonts/3x3-Mono")

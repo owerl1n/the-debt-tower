@@ -4,12 +4,10 @@ local gfx <const> = pd.graphics
 
 LevelSelectScene = {}
 
-local IMAGE_HEIGHT  = 360
 local SCREEN_HEIGHT = 120
-local MAX_SCROLL    = IMAGE_HEIGHT - SCREEN_HEIGHT -- 240
 
-local SCROLL_STEP       = 10  -- пикселей на один уровень — как просил
-local SCROLL_ANIM_SPEED = 2   -- пикселей за кадр при попиксельном подъёме/спуске — подстрой
+local SLIDE_IN_MS  = 450 -- выезд снизу при входе с титульника
+local SLIDE_OUT_MS = 450 -- уезжание вниз при выходе на титульник
 
 -- ── PSP-style повтор кнопок ───────────────────────────────────────────────────
 local INITIAL_REPEAT_DELAY = 300 -- мс до начала быстрого повтора
@@ -24,12 +22,29 @@ local ARROW_UP_PRESSED   = 2
 local ARROW_DOWN_IDLE    = 3
 local ARROW_DOWN_PRESSED = 4
 
-local PANEL_X   = 145 -- X-центр блока (стрелки + статистика) — подстрой
+local PANEL_X   = 100 -- X-центр блока (стрелки + статистика) — подстрой
 local PANEL_GAP = 4   -- зазор между стрелками и картинкой статистики — подстрой
 
 -- ── Надпись текущего уровня ───────────────────────────────────────────────────
 local LEVEL_LABEL_X = 160 -- X-центр надписи "#N" — подстрой
-local LEVEL_LABEL_Y = 42   -- Y надписи "#N" — подстрой
+local LEVEL_LABEL_Y = 42  -- Y надписи "#N" — подстрой
+
+function LevelSelectScene:_loadAssets()
+    -- self._image = gfx.image.new("images/level_select2")
+    -- assert(self._image, "LevelSelectScene: не удалось загрузить images/level_select2")
+
+    self._arrowTable = gfx.imagetable.new("images/arrow-table-21-9")
+    assert(self._arrowTable, "LevelSelectScene: не удалось загрузить images/arrow-table-21-9")
+
+    self._statsImage = gfx.image.new("images/level_select2")
+    assert(self._statsImage, "LevelSelectScene: не удалось загрузить images/level_finished3")
+
+    self._gemImage = gfx.image.new("images/gem")
+    assert(self._gemImage, "LevelSelectScene: не удалось загрузить images/gem")
+
+    self._monogramFont = gfx.font.new("fonts/monogram")
+    assert(self._monogramFont, "LevelSelectScene: не удалось загрузить fonts/monogram")
+end
 
 function LevelSelectScene:enter(params)
     gfx.setDrawOffset(0, 0)
@@ -47,45 +62,66 @@ function LevelSelectScene:enter(params)
     local saved = SaveManager.getCurrentLevel()
     self._selectedLevel = math.max(1, math.min(self._totalLevels, saved))
 
-    self._scrollY       = self:_scrollForLevel(self._selectedLevel)
-    self._targetScrollY = self._scrollY
-
     self._upState    = { heldSince = nil, nextRepeat = nil }
     self._downState  = { heldSince = nil, nextRepeat = nil }
     self._crankAccum = 0
 
-    SceneManager.flashBlack(1, function()
-        self._image = gfx.image.new("images/level_select")
-        assert(self._image, "LevelSelectScene: не удалось загрузить images/level_select")
+    self._offsetY    = 0     -- общий вертикальный сдвиг сцены при анимациях
+    self._slideTimer = nil
+    self._leaving    = false
 
-        self._arrowTable = gfx.imagetable.new("images/arrow-table-21-9")
-        assert(self._arrowTable, "LevelSelectScene: не удалось загрузить images/arrow-table-21-9")
+    if params and params.fromTitle then
+        -- пришли с титульника: грузим сразу и выезжаем снизу
+        self:_loadAssets()
 
-        self._statsImage = gfx.image.new("images/level_finished2")
-        assert(self._statsImage, "LevelSelectScene: не удалось загрузить images/level_finished2")
-
-        self._gemImage = gfx.image.new("images/gem")
-        assert(self._gemImage, "LevelSelectScene: не удалось загрузить images/gem")
-
-        self._monogramFont = gfx.font.new("fonts/monogram")
-        assert(self._monogramFont, "LevelSelectScene: не удалось загрузить fonts/monogram")
-    end)
+        self._offsetY = SCREEN_HEIGHT
+        local timer = pd.timer.new(SLIDE_IN_MS, SCREEN_HEIGHT, 0)
+        timer.easingFunction = pd.easingFunctions.outCubic
+        timer.updateCallback = function(t)
+            self._offsetY = t.value
+        end
+        timer.timerEndedCallback = function()
+            self._offsetY    = 0
+            self._slideTimer = nil
+        end
+        self._slideTimer = timer
+    else
+        -- из других мест (например, из игры) поведение прежнее
+        SceneManager.flashBlack(1, function()
+            self:_loadAssets()
+        end)
+    end
 end
 
 function LevelSelectScene:exit()
-end
-
-function LevelSelectScene:_scrollForLevel(level)
-    local scroll = MAX_SCROLL - (level - 1) * SCROLL_STEP
-    return math.max(0, math.min(MAX_SCROLL, scroll))
+    if self._slideTimer then
+        self._slideTimer:remove()
+        self._slideTimer = nil
+    end
 end
 
 function LevelSelectScene:_changeSelection(delta)
     local newLevel = math.max(1, math.min(self._totalLevels, self._selectedLevel + delta))
     if newLevel == self._selectedLevel then return end
-
     self._selectedLevel = newLevel
-    self._targetScrollY = self:_scrollForLevel(newLevel)
+end
+
+-- Уезжаем вниз и без перехода включаем титульник, который выедет снизу
+function LevelSelectScene:_slideOutToTitle()
+    if self._leaving then return end
+    self._leaving = true
+
+    local timer = pd.timer.new(SLIDE_OUT_MS, 0, SCREEN_HEIGHT)
+    timer.easingFunction = pd.easingFunctions.inCubic
+    timer.updateCallback = function(t)
+        self._offsetY = t.value
+    end
+    timer.timerEndedCallback = function()
+        self._offsetY    = SCREEN_HEIGHT
+        self._slideTimer = nil
+        SceneManager.go("title", { fromLevelSelect = true }, SceneManager.transitions.cut)
+    end
+    self._slideTimer = timer
 end
 
 -- Обрабатывает одну кнопку с PSP-style повтором: сразу шаг на 1,
@@ -108,28 +144,22 @@ end
 
 function LevelSelectScene:update()
     if SceneManager.isTransitioning() then return end
+    if self._slideTimer or self._leaving then return end -- ввод заблокирован на время анимации
 
     local now = pd.getCurrentTimeMilliseconds()
     self:_handleRepeatButton(pd.kButtonUp,   1, self._upState,   now)
     self:_handleRepeatButton(pd.kButtonDown, -1, self._downState, now)
 
-    -- Попиксельный подъём/спуск картинки к целевой позиции
-    if self._scrollY ~= self._targetScrollY then
-        if self._scrollY < self._targetScrollY then
-            self._scrollY = math.min(self._targetScrollY, self._scrollY + SCROLL_ANIM_SPEED)
-        else
-            self._scrollY = math.max(self._targetScrollY, self._scrollY - SCROLL_ANIM_SPEED)
-        end
-    end
-
     if pd.buttonJustPressed(pd.kButtonA) then
         SceneManager.go("game", { level = self._selectedLevel }, SceneManager.transitions.fade)
     elseif pd.buttonJustPressed(pd.kButtonB) then
-        SceneManager.go("title", nil, SceneManager.transitions.fade)
+        self:_slideOutToTitle()
     end
 end
 
 function LevelSelectScene:cranked(change, acceleratedChange)
+    if self._slideTimer or self._leaving then return end
+
     self._crankAccum += change
 
     while self._crankAccum >= CRANK_DEGREES_PER_STEP do
@@ -143,12 +173,22 @@ function LevelSelectScene:cranked(change, acceleratedChange)
 end
 
 function LevelSelectScene:draw()
-    if self._image then
-        self._image:draw(0, -self._scrollY)
+    local shifted = self._offsetY ~= 0
+    if shifted then
+        gfx.clear(gfx.kColorWhite) -- тот же цвет фона, что и в TitleScene
+        gfx.setDrawOffset(0, self._offsetY)
     end
+
+    -- if self._image then
+    --     self._image:draw(0, 0)
+    -- end
 
     self:_drawSidePanel()
     self:_drawLevelLabel()
+
+    if shifted then
+        gfx.setDrawOffset(0, 0)
+    end
 end
 
 function LevelSelectScene:_drawLevelLabel()

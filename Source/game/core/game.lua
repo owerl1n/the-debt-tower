@@ -86,26 +86,30 @@ function Game:init(startLevel, onNextLevel, onRestart)
     TreasureManager.addBonus(ScoreConfig.getStartScore(startLevel))
 
     self.levelComplete = LevelComplete(
-    startLevel,
-    function()  -- onNext
-        SaveManager.setLevelScore(startLevel, TreasureManager.score)
-        TreasureManager.reset()
+        startLevel,
+        function()  -- onNext
+            if self.player then
+                self.player:playVanish()
+            end
+            TreasureManager.reset()
+            if onNextLevel then
+                onNextLevel(nextLevel)
+            end
+        end,
+        function()  -- onRestart
+            TreasureManager.reset()
+            if onRestart then
+                onRestart(startLevel)
+            end
+        end
+    )
+
+    self.level = Level(levelName)
+
+    self.player = Player(self.level.spawnX, self.level.spawnY, self.levelComplete, function()
         SaveManager.setProgress(nextLevel, totalLevels)
-        if onNextLevel then
-            onNextLevel(nextLevel)
-        end
-    end,
-    function()  -- onRestart
-        TreasureManager.reset()
-        if onRestart then
-            onRestart(startLevel)
-        end
-    end
-)
-
-    self.level  = Level(levelName)
-
-    self.player = Player(self.level.spawnX, self.level.spawnY, self.levelComplete)
+        SaveManager.setLevelScore(startLevel, TreasureManager.score)
+    end)
 
     self._activeSlot   = 1 -- edit default spell
 

@@ -22,8 +22,8 @@ local ICON_OFFSET_Y_MID    =  -4
 local ICON_OFFSET_Y_BOTTOM =  20
 local ICON_SCALE           = 1.0
 
-imagetable = gfx.imagetable.new("images/book-table-107-97")
-assert(imagetable, "SpellBook: не удалось загрузить images/book-table-107-97")
+imagetable = gfx.imagetable.new("images/book-table-113-108")
+assert(imagetable, "SpellBook: не удалось загрузить images/book-table-113-108")
 
 -- ── SpellBook ─────────────────────────────────────────────────────────────────
 

@@ -64,7 +64,7 @@ function DebtCollector:init(x, y, entity)
 
     self:setCenter(0.5, 0.5)
     self:moveTo(x, y)
-    self:setZIndex(Z_INDEXES.Hazard)
+    self:setZIndex(Z_INDEXES.NPC)
     self:setCollideRect(2, 2, 12, 12)
     self:setTag(TAGS.Hazard)
     self:add()

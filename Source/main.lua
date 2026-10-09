@@ -86,7 +86,7 @@ function pd.update()
     SceneManager.drawOverlay()
     pdDialogue.update()
     pd.timer.updateTimers()
-    --pd.drawFPS(1,1)
+    pd.drawFPS(1,1)
 end
 
 function pd.cranked(change, acceleratedChange)

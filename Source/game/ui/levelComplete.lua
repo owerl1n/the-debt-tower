@@ -28,9 +28,10 @@ local FLOOR_LABEL_OFFSET_Y = -42 -- насколько выше картинки
 -- задержка перед тем как принимать ввод (чтобы не скипнуть случайно)
 local INPUT_DELAY = 30  -- кадров
 
+
 function LevelComplete:init(currentLevel, onNext, onRestart)
     self._active       = false
-    self._image        = gfx.image.new("images/level_finished")
+    self._image        = gfx.image.new("images/level_finished3")
     self._gemImage     = gfx.image.new("images/gem")
     assert(self._gemImage, "LevelComplete: не удалось загрузить images/gem")
     self._timer        = 0
@@ -45,11 +46,14 @@ function LevelComplete:init(currentLevel, onNext, onRestart)
     -- Текущая Y-позиция картинки/текста во время анимации выезда
     self._y          = TARGET_Y
     self._slideTimer = nil
+
+    self._chosen = false
 end
 
 function LevelComplete:trigger()
     if self._active then return end
     self._active     = true
+    self._chosen     = false
     self._timer      = 0
     self._inputReady = false
 
@@ -102,6 +106,7 @@ function LevelComplete:triggerInstant()
     end
 
     self._active     = true
+    self._chosen     = false
     self._timer      = INPUT_DELAY
     self._inputReady = true
 
@@ -136,6 +141,7 @@ end
 
 function LevelComplete:update()
     if not self._active then return end
+    if self._chosen then return end   -- выбор сделан, ждём конца фейда
     self._timer += 1
 
     if not self._inputReady and self._timer >= INPUT_DELAY then
@@ -145,10 +151,10 @@ function LevelComplete:update()
     if not self._inputReady then return end
 
     if pd.buttonJustPressed(pd.kButtonA) then
-        self._active = false
+        self._chosen = true
         if self._onNext then self._onNext() end
     elseif pd.buttonJustPressed(pd.kButtonB) then
-        self._active = false
+        self._chosen = true
         if self._onRestart then self._onRestart() end
     end
 end

@@ -7,7 +7,7 @@ import "game/entities/player/taxIndicator"
 
 class('Player').extends(AnimatedSprite)
 
-playerImageTable = gfx.imagetable.new("images/mage-table-17-17")
+playerImageTable = gfx.imagetable.new("images/mage-table-32-32")
 assert(playerImageTable, "playerImageTable not found")
 
 local SHOOT_COOLDOWN          = 20
@@ -17,22 +17,33 @@ local DASH_SPELL_COST         = 75 --8
 local ANCHOR_SPELL_COST       = 90 --14
 local BOUNCE_BLOCK_SPELL_COST = 115 --16
 
-function Player:init(x, y, levelComplete)
+function Player:init(x, y, levelComplete, onLevelPassed)
     Player.super.init(self, playerImageTable)
 
-    self:addState("idle", 1, 1)
-    self:addState("run", 1, 1)
-    self:addState("jump", 1, 1)
-    self:addState("dash", 1, 1)
-    self:addState("death", 2, 2, {
-        tickStep = 1,
+    self:addState("idle",  2, 2, { loop = true })
+    self:addState("run",   3, 4, { tickStep = 4, loop = true })
+    self:addState("jump",  5, 6, { tickStep = 4, loop = true })
+    self:addState("fall",  7, 8, { tickStep = 4, loop = true })
+    self:addState("dash",  7, 7, { loop = true })
+    self:addState("death", 1, 1, { loop = true })
+    self:addState("vanish", 9, 16, {
+        tickStep = 3,
         loop     = false,
+        onAnimationEndEvent = function(sprite)
+            sprite:setVisible(false)
+        end,
     })
     self:playAnimation()
 
+    self.motionState = "idle"
+    self._airFrames  = 0
+    self._vanishing  = false
+
     self:moveTo(x, y)
     self:setZIndex(Z_INDEXES.Player)
-    self:setCollideRect(3, 3, 10, 13)
+    -- Спрайт 32x32, центр (16,16). Коллайдер тот же 10x13 и в том же месте
+    -- относительно центра, что и раньше (было 3,3 на 17x17).
+    self:setCollideRect(10.5, 10.5, 10, 13)
     self:setTag(TAGS.Player)
 
     -- Physics
@@ -115,6 +126,8 @@ function Player:init(x, y, levelComplete)
     self._blockIndicator       = nil
 
     self.levelComplete         = levelComplete
+    self._onLevelPassed        = onLevelPassed
+    
 end
 
 function Player:showScorePopup(amount)
@@ -164,6 +177,7 @@ function Player:update()
     self:updateJumpBuffer()
     self:handleState()
     self:handleMovementAndCollisions()
+    self:_updateVisualState()
 end
 
 function Player:updateJumpBuffer()
@@ -179,21 +193,21 @@ function Player:playerJumped()
 end
 
 function Player:handleState()
-    if self.currentState == "idle" then
+    if self.motionState == "idle" then
         self:applyGravity()
         if self.atExit then
             self.xVelocity = 0
         else
             self:handleGroundInput()
         end
-    elseif self.currentState == "run" then
+    elseif self.motionState == "run" then
         self:applyGravity()
         if self.atExit then
             self:changeToIdleState()
         else
             self:handleGroundInput()
         end
-    elseif self.currentState == "jump" then
+    elseif self.motionState == "jump" then
         if self.touchingGround then self:changeToIdleState() end
         if self._peakY == nil or self.y < self._peakY then
             self._peakY = self.y
@@ -217,7 +231,7 @@ function Player:handleState()
         if not self.atExit then
             self:handleAirInput()
         end
-    elseif self.currentState == "dash" then
+    elseif self.motionState == "dash" then
         self:applyDrag(self.dashDrag)
         if math.abs(self.xVelocity) <= self.dashMinimumSpeed then
             self:changeToFallState()
@@ -409,7 +423,7 @@ function Player:handleMovementAndCollisions()
                 self.dashAvailable       = true
                 self._peakY              = targetY
                 self.touchingGround      = false
-                self:changeState("jump")
+                self.motionState = "jump"
                 print("[BounceBlock] targetY=" .. math.floor(targetY) .. " v=" .. string.format("%.2f", self.yVelocity))
             end
         end
@@ -447,6 +461,14 @@ function Player:onExitTouch()
     self.atExit = true
     self.xVelocity = 0
 
+    if self._onLevelPassed then
+        print("[Player] onExitTouch: вызываю onLevelPassed")  -- временный дебаг-принт
+        self._onLevelPassed()
+        self._onLevelPassed = nil
+    else
+        print("[Player] onExitTouch: onLevelPassed отсутствует!")  -- если видите это — колбэк не пришёл в конструктор
+    end
+
     if self._exitSprite then
         self._exitSprite:playFinishAnimation(function(wasSkipped)
             if not self.levelComplete then return end
@@ -474,7 +496,10 @@ function Player:die()
     self._deathBounceX = bounceX
     self._deathBounceY = bounceY
 
-    self:changeState("death")   -- ← вместо setImage
+    self._facingBeforeDeath = self.globalFlip
+    self.globalFlip = math.random(0, 1)
+
+    self:changeState("death")
 
     -- отключаем коллизии
     self:setCollisionsEnabled(false)
@@ -484,6 +509,9 @@ function Player:die()
         self.dead = false
         self._deathBounceX = 0
         self._deathBounceY = 0
+        if self._facingBeforeDeath then
+            self.globalFlip = self._facingBeforeDeath
+        end
         -- возвращаем анимацию
         self:playAnimation()
     end)
@@ -527,7 +555,7 @@ end
 function Player:changeToIdleState()
     self._peakY = nil
     self.xVelocity = 0
-    self:changeState("idle")
+    self.motionState = "idle"
 end
 
 function Player:changeToRunState(direction)
@@ -539,7 +567,7 @@ function Player:changeToRunState(direction)
         self.xVelocity = self.maxSpeed
         self.globalFlip = 0
     end
-    self:changeState("run")
+    self.motionState = "run"
 end
 
 function Player:changeToJumpState()
@@ -548,11 +576,11 @@ function Player:changeToJumpState()
     self.jumpBuffer = 0
     self.jumpHoldFrames = self.jumpHoldMaxFrames
     self.coyoteFrames = 0
-    self:changeState("jump")
+    self.motionState = "jump"
 end
 
 function Player:changeToFallState()
-    self:changeState("jump")
+    self.motionState = "jump"
 end
 
 function Player:changeToDashState()
@@ -564,12 +592,12 @@ function Player:changeToDashState()
         self.xVelocity = self.dashSpeed
     else
         if self.globalFlip == 1 then
-            self.xVelocity = -self.dashSpeed
+            self.xVelocity = -self.dashSpeed 
         else
             self.xVelocity = self.dashSpeed
         end
     end
-    self:changeState("dash")
+    self.motionState = "dash"
 end
 
 function Player:applyGravity()
@@ -663,6 +691,40 @@ function Player:skipExitSequence()
     if self.levelComplete and self.levelComplete:isActive() and not self.levelComplete:isInputReady() then
         self.levelComplete:skipIntro()
     end
+end
+
+function Player:_updateVisualState()
+    if self.dead or self._vanishing then return end
+
+    -- Из-за гравитации touchingGround мигает true/false на земле,
+    -- поэтому "в воздухе" считаем только после 2+ кадров подряд без опоры.
+    if self.touchingGround then
+        self._airFrames = 0
+    else
+        self._airFrames += 1
+    end
+
+    local anim
+    if self.motionState == "dash" then
+        anim = "dash"
+    elseif self.yVelocity < 0 then
+        anim = "jump"
+    elseif self._airFrames >= 2 then
+        anim = "fall"
+    elseif self.motionState == "run" then
+        anim = "run"
+    else
+        anim = "idle"
+    end
+
+    self:changeState(anim)
+end
+
+function Player:playVanish()
+    if self._vanishing then return end
+    self._vanishing = true
+    self.xVelocity = 0
+    self:changeState("vanish")
 end
 
 function Player:collisionResponse(other)

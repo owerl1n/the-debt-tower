@@ -37,8 +37,8 @@ local TREASURE_TYPES = {
 }
 
 -- ── Параметры парения вверх-вниз ──────────────────────────────────────────────
-local FLOAT_AMPLITUDE = 1     -- на сколько пикселей отклоняется от базовой Y
-local FLOAT_SPEED     = 0.17  -- скорость колебания (рад/кадр)
+local FLOAT_AMPLITUDE = 1.1     -- на сколько пикселей отклоняется от базовой Y
+local FLOAT_SPEED     = 0.11  -- скорость колебания (рад/кадр)
 
 function Treasure:init(x, y, kind, entity)
     kind = kind or "coin"
